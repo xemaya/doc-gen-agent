@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import quote
 
 import boto3
 from fastapi import FastAPI, HTTPException, Request
@@ -133,12 +134,21 @@ async def invoke(request: Request) -> Response:
         )
     log.info("pdf generated: bytes=%d", len(pdf_bytes))
 
-    safe_name = (title or "document").replace('"', "'")
+    # HTTP headers are latin-1 by default, so CJK titles can't go in
+    # filename="...". RFC 5987 filename*=UTF-8'' handles it, with an ASCII
+    # filename= fallback for ancient clients.
+    safe_name = (title or "document").replace('"', "'").replace("\\", "")
+    ascii_fallback = "document.pdf"
+    utf8_encoded = quote(f"{safe_name}.pdf", safe="")
+    content_disposition = (
+        f'attachment; filename="{ascii_fallback}"; '
+        f"filename*=UTF-8''{utf8_encoded}"
+    )
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}.pdf"',
+            "Content-Disposition": content_disposition,
             "X-Doc-Length": str(len(pdf_bytes)),
         },
     )
