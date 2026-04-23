@@ -1,0 +1,47 @@
+apiVersion: a2h/v2
+kind: Agent
+
+metadata:
+  name: doc_gen
+  version: 1.0.0
+  displayName: Document Generator
+  description: Writes Apple-style whitepaper PDFs from a task description via OpenRouter.
+
+runtime:
+  type: sandbox
+  port: 8080
+  entrypoint:
+    - uvicorn
+    - server:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8080"
+  # Serial execution: WeasyPrint is CPU-heavy and not thread-friendly.
+  # Keep concurrency=1 so one worker handles one invoke at a time; scale
+  # out via pool.max_workers instead.
+  concurrency: 1
+
+pool:
+  initial_workers: 1
+  max_workers: 3
+  min_workers: 0
+
+resources:
+  # 2 vCPU + 4 GB — LLM call + WeasyPrint on a multi-page doc peaks around
+  # 1 GB, headroom for CJK font cache.
+  cpu: 2
+  memory: 4096
+
+# No platform tools — this agent only talks to OpenRouter + SSM.
+tools: []
+
+env:
+  # Optional override. If absent, agent defaults to
+  # /a2h/agents/doc-gen/openrouter-api-key (see server.py).
+  - name: OPENROUTER_KEY_PARAM
+    required: false
+
+egress:
+  - openrouter.ai
+  - ssm.us-east-1.amazonaws.com
